@@ -59,7 +59,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         if gitlab_token_header == gitlab_token:
             logging.info("Start executing '%s'" % command)
             try:
-                subprocess.call(command)
+                # run command in background
+                subprocess.Popen(command)
                 self.send_response(200, "OK")
             except OSError as err:
                 self.send_response(500, "OSError")
