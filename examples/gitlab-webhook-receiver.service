@@ -1,0 +1,9 @@
+[Unit]
+Description=Gitlab Webhook Receiver
+After=network.target
+
+[Service]
+ExecStart=gitlab-webhook-receiver.py
+
+[Install]
+WantedBy=multi-user.target

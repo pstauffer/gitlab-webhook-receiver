@@ -1,0 +1,9 @@
+---
+# myrepo
+https://git.example.ch/exmaple/myrepo:
+  command: uname
+  gitlab_token: mysecret-myrepo
+# test-repo
+https://git.example.ch/exmaple/test-repo:
+  command: uname
+  gitlab_token: mysecret-test-repo
