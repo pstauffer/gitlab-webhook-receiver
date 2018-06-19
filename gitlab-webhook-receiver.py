@@ -8,6 +8,7 @@ import json
 import yaml
 from subprocess import Popen, PIPE, STDOUT
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
+from importlib import import_module
 try:
     # For Python 3.0 and later
     from http.server import HTTPServer
@@ -55,6 +56,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             logging.error("Not authorized, Gitlab_Token not authorized")
             self.send_response(401, "Gitlab Token not authorized")
 
+    def process_from_module(self, gitlab_token_header, json_params):
+        for m in modules:
+            logging.info("Running main() from module '%s'", m)
+            m.main(gitlab_token_header, json_params, self, args)
+
     def do_POST(self):
         logging.info("Hook received")
 
@@ -78,6 +84,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         except KeyError as err:
             self.send_response(500, "KeyError")
             logging.error("No project provided by the JSON payload")
+            self.end_headers()
+            return
+
+        if args.modules:
+            self.process_from_module(gitlab_token_header, json_params)
             self.end_headers()
             return
 
@@ -114,9 +125,12 @@ def get_parser():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--cfg",
                        dest="cfg",
-                       default="config.yaml",
                        type=FileType('r'),
                        help="path to the config file")
+    group.add_argument("-m", "--module",
+                       action="append",
+                       dest="modules",
+                       help="path to a python module to run")
     return parser
 
 
@@ -132,5 +146,7 @@ if __name__ == '__main__':
 
     if args.cfg:
         config = yaml.load(args.cfg)
+    elif args.modules:
+        modules = [import_module(m, package=".") for m in args.modules]
 
     main(args.addr, args.port)
