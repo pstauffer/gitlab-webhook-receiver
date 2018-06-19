@@ -70,7 +70,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             logging.info("Start executing '%s'" % command)
             try:
                 # run command in background
-                p = Popen(command)
+                p = Popen(command, stdin=PIPE)
                 p.stdin.write(json_payload);
                 if foreground:
                     p.communicate()
