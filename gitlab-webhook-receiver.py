@@ -6,7 +6,7 @@
 
 import json
 import yaml
-import subprocess
+from subprocess import Popen, PIPE, STDOUT
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 try:
     # For Python 3.0 and later
@@ -51,6 +51,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             # get command and token from config file
             command = config[project]['command']
             gitlab_token = config[project]['gitlab_token']
+            foreground = 'background' in config[project] and not config[project]['background']
 
             logging.info("Load project '%s' and run command '%s'", project, command)
         except KeyError as err:
@@ -69,7 +70,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             logging.info("Start executing '%s'" % command)
             try:
                 # run command in background
-                subprocess.Popen(command)
+                p = Popen(command)
+                p.stdin.write(json_payload);
+                if foreground:
+                    p.communicate()
                 self.send_response(200, "OK")
             except OSError as err:
                 self.send_response(500, "OSError")
