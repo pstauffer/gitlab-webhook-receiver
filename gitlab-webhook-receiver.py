@@ -30,15 +30,19 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         logging.info("Hook received")
 
-        # get payload
-        header_length = int(self.headers.getheader('content-length', "0"))
+        if sys.version_info >= (3,0):
+            # get payload
+            header_length = int(self.headers['Content-Length'])
+            # get gitlab secret token
+            gitlab_token_header = self.headers['X-Gitlab-Token']
+        else:
+            header_length = int(self.headers.getheader('content-length', "0"))
+            gitlab_token_header = self.headers.getheader('X-Gitlab-Token')
+
         json_payload = self.rfile.read(header_length)
         json_params = {}
         if len(json_payload) > 0:
             json_params = json.loads(json_payload)
-
-        # get gitlab secret token
-        gitlab_token_header = self.headers.getheader('X-Gitlab-Token')
 
         # get project homepage
         project = json_params['project']['homepage']
