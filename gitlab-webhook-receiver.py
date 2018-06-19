@@ -44,8 +44,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         if len(json_payload) > 0:
             json_params = json.loads(json_payload)
 
-        # get project homepage
-        project = json_params['project']['homepage']
+        try:
+            # get project homepage
+            project = json_params['project']['homepage']
+        except KeyError as err:
+            self.send_response(500, "KeyError")
+            logging.error("No project provided by the JSON payload")
+            self.end_headers()
+            return
 
         try:
             # get command and token from config file
