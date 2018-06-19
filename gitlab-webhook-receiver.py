@@ -27,6 +27,34 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
 class RequestHandler(BaseHTTPRequestHandler):
     """A POST request handler."""
 
+    # Attributes (only if a config YAML is used)
+    # command, gitlab_token, foreground
+    def get_info_from_config(self, project, config):
+        # get command and token from config file
+        self.command = config[project]['command']
+        self.gitlab_token = config[project]['gitlab_token']
+        self.foreground = 'background' in config[project] and not config[project]['background']
+        logging.info("Load project '%s' and run command '%s'", project, self.command)
+
+    def do_token_mgmt(self, gitlab_token_header, json_payload):
+        # Check if the gitlab token is valid
+        if gitlab_token_header == self.gitlab_token:
+            logging.info("Start executing '%s'" % self.command)
+            try:
+                # run command in background
+                p = Popen(self.command, stdin=PIPE)
+                p.stdin.write(json_payload);
+                if self.foreground:
+                    p.communicate()
+                self.send_response(200, "OK")
+            except OSError as err:
+                self.send_response(500, "OSError")
+                logging.error("Command could not run successfully.")
+                logging.error(err)
+        else:
+            logging.error("Not authorized, Gitlab_Token not authorized")
+            self.send_response(401, "Gitlab Token not authorized")
+
     def do_POST(self):
         logging.info("Hook received")
 
@@ -54,41 +82,18 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            # get command and token from config file
-            command = config[project]['command']
-            gitlab_token = config[project]['gitlab_token']
-            foreground = 'background' in config[project] and not config[project]['background']
-
-            logging.info("Load project '%s' and run command '%s'", project, command)
+            self.get_info_from_config(project, config)
+            self.do_token_mgmt(gitlab_token_header, json_payload)
         except KeyError as err:
             self.send_response(500, "KeyError")
             if err == project:
-                logging.error("Project '%s' not found in %s", project, args.cfg)
+                logging.error("Project '%s' not found in %s", project, args.cfg.name)
             elif err == 'command':
-                logging.error("Key 'command' not found in %s", args.cfg)
+                logging.error("Key 'command' not found in %s", args.cfg.name)
             elif err == 'gitlab_token':
-                logging.error("Key 'gitlab_token' not found in %s", args.cfg)
+                logging.error("Key 'gitlab_token' not found in %s", args.cfg.name)
+        finally:
             self.end_headers()
-            return
-
-        # Check if the gitlab token is valid
-        if gitlab_token_header == gitlab_token:
-            logging.info("Start executing '%s'" % command)
-            try:
-                # run command in background
-                p = Popen(command, stdin=PIPE)
-                p.stdin.write(json_payload);
-                if foreground:
-                    p.communicate()
-                self.send_response(200, "OK")
-            except OSError as err:
-                self.send_response(500, "OSError")
-                logging.error("Command could not run successfully.")
-                logging.error(err)
-        else:
-            logging.error("Not authorized, Gitlab_Token not authorized")
-            self.send_response(401, "Gitlab Token not authorized")
-        self.end_headers()
 
 
 def get_parser():
