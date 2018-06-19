@@ -7,7 +7,7 @@
 import json
 import yaml
 from subprocess import Popen, PIPE, STDOUT
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
 try:
     # For Python 3.0 and later
     from http.server import HTTPServer
@@ -106,10 +106,12 @@ def get_parser():
                         default=8666,
                         metavar="PORT",
                         help="port where it listens")
-    parser.add_argument("--cfg",
-                        dest="cfg",
-                        default="config.yaml",
-                        help="path to the config file")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--cfg",
+                       dest="cfg",
+                       default="config.yaml",
+                       type=FileType('r'),
+                       help="path to the config file")
     return parser
 
 
@@ -121,18 +123,9 @@ def main(addr, port):
 
 if __name__ == '__main__':
     parser = get_parser()
-
-    if len(sys.argv) == 0:
-        parser.print_help()
-        sys.exit(1)
     args = parser.parse_args()
 
-    # load config file
-    try:
-        with open(args.cfg, 'r') as stream:
-            config = yaml.load(stream)
-    except IOError as err:
-        logging.error("Config file %s could not be loaded", args.cfg)
-        sys.exit(1)
+    if args.cfg:
+        config = yaml.load(args.cfg)
 
     main(args.addr, args.port)
