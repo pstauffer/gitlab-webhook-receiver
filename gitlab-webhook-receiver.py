@@ -42,7 +42,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         json_payload = self.rfile.read(header_length)
         json_params = {}
         if len(json_payload) > 0:
-            json_params = json.loads(json_payload)
+            json_params = json.loads(json_payload.decode('utf-8'))
 
         try:
             # get project homepage
