@@ -51,7 +51,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             logging.info("Load project '%s' and run command '%s'", project, command)
         except KeyError as err:
             self.send_response(500, "KeyError")
-            logging.error("Project '%s' not found in %s", project, args.cfg)
+            if err == project:
+                logging.error("Project '%s' not found in %s", project, args.cfg)
+            elif err == 'command':
+                logging.error("Key 'command' not found in %s", args.cfg)
+            elif err == 'gitlab_token':
+                logging.error("Key 'gitlab_token' not found in %s", args.cfg)
             self.end_headers()
             return
 
