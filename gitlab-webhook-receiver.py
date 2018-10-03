@@ -46,7 +46,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         try:
             # get project homepage
-            project = json_params['project']['homepage']
+            project = json_params['project']['name']
         except KeyError as err:
             self.send_response(500, "KeyError")
             logging.error("No project provided by the JSON payload")
