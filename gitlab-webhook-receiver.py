@@ -8,6 +8,7 @@ import json
 import yaml
 from subprocess import Popen, PIPE, STDOUT
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
+from importlib import import_module
 try:
     # For Python 3.0 and later
     from http.server import HTTPServer
@@ -26,6 +27,39 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
 
 class RequestHandler(BaseHTTPRequestHandler):
     """A POST request handler."""
+
+    # Attributes (only if a config YAML is used)
+    # command, gitlab_token, foreground
+    def get_info_from_config(self, project, config):
+        # get command and token from config file
+        self.command = config[project]['command']
+        self.gitlab_token = config[project]['gitlab_token']
+        self.foreground = 'background' in config[project] and not config[project]['background']
+        logging.info("Load project '%s' and run command '%s'", project, self.command)
+
+    def do_token_mgmt(self, gitlab_token_header, json_payload):
+        # Check if the gitlab token is valid
+        if gitlab_token_header == self.gitlab_token:
+            logging.info("Start executing '%s'" % self.command)
+            try:
+                # run command in background
+                p = Popen(self.command, stdin=PIPE)
+                p.stdin.write(json_payload);
+                if self.foreground:
+                    p.communicate()
+                self.send_response(200, "OK")
+            except OSError as err:
+                self.send_response(500, "OSError")
+                logging.error("Command could not run successfully.")
+                logging.error(err)
+        else:
+            logging.error("Not authorized, Gitlab_Token not authorized")
+            self.send_response(401, "Gitlab Token not authorized")
+
+    def process_from_module(self, gitlab_token_header, json_params):
+        for m in modules:
+            logging.info("Running main() from module '%s'", m)
+            m.main(gitlab_token_header, json_params, self, args)
 
     def do_POST(self):
         logging.info("Hook received")
@@ -53,42 +87,24 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        try:
-            # get command and token from config file
-            command = config[project]['command']
-            gitlab_token = config[project]['gitlab_token']
-            foreground = 'background' in config[project] and not config[project]['background']
-
-            logging.info("Load project '%s' and run command '%s'", project, command)
-        except KeyError as err:
-            self.send_response(500, "KeyError")
-            if err == project:
-                logging.error("Project '%s' not found in %s", project, args.cfg)
-            elif err == 'command':
-                logging.error("Key 'command' not found in %s", args.cfg)
-            elif err == 'gitlab_token':
-                logging.error("Key 'gitlab_token' not found in %s", args.cfg)
+        if args.modules:
+            self.process_from_module(gitlab_token_header, json_params)
             self.end_headers()
             return
 
-        # Check if the gitlab token is valid
-        if gitlab_token_header == gitlab_token:
-            logging.info("Start executing '%s'" % command)
-            try:
-                # run command in background
-                p = Popen(command, stdin=PIPE)
-                p.stdin.write(json_payload);
-                if foreground:
-                    p.communicate()
-                self.send_response(200, "OK")
-            except OSError as err:
-                self.send_response(500, "OSError")
-                logging.error("Command could not run successfully.")
-                logging.error(err)
-        else:
-            logging.error("Not authorized, Gitlab_Token not authorized")
-            self.send_response(401, "Gitlab Token not authorized")
-        self.end_headers()
+        try:
+            self.get_info_from_config(project, config)
+            self.do_token_mgmt(gitlab_token_header, json_payload)
+        except KeyError as err:
+            self.send_response(500, "KeyError")
+            if err == project:
+                logging.error("Project '%s' not found in %s", project, args.cfg.name)
+            elif err == 'command':
+                logging.error("Key 'command' not found in %s", args.cfg.name)
+            elif err == 'gitlab_token':
+                logging.error("Key 'gitlab_token' not found in %s", args.cfg.name)
+        finally:
+            self.end_headers()
 
 
 def get_parser():
@@ -109,9 +125,12 @@ def get_parser():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--cfg",
                        dest="cfg",
-                       default="config.yaml",
                        type=FileType('r'),
                        help="path to the config file")
+    group.add_argument("-m", "--module",
+                       action="append",
+                       dest="modules",
+                       help="path to a python module to run")
     return parser
 
 
@@ -127,5 +146,7 @@ if __name__ == '__main__':
 
     if args.cfg:
         config = yaml.load(args.cfg)
+    elif args.modules:
+        modules = [import_module(m, package=".") for m in args.modules]
 
     main(args.addr, args.port)
