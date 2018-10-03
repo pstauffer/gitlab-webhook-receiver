@@ -6,8 +6,8 @@
 
 import json
 import yaml
-import subprocess
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from subprocess import Popen, PIPE, STDOUT
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
 try:
     # For Python 3.0 and later
     from http.server import HTTPServer
@@ -30,23 +30,34 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         logging.info("Hook received")
 
-        # get payload
-        header_length = int(self.headers.getheader('content-length', "0"))
+        if sys.version_info >= (3,0):
+            # get payload
+            header_length = int(self.headers['Content-Length'])
+            # get gitlab secret token
+            gitlab_token_header = self.headers['X-Gitlab-Token']
+        else:
+            header_length = int(self.headers.getheader('content-length', "0"))
+            gitlab_token_header = self.headers.getheader('X-Gitlab-Token')
+
         json_payload = self.rfile.read(header_length)
         json_params = {}
         if len(json_payload) > 0:
-            json_params = json.loads(json_payload)
+            json_params = json.loads(json_payload.decode('utf-8'))
 
-        # get gitlab secret token
-        gitlab_token_header = self.headers.getheader('X-Gitlab-Token')
-
-        # get project homepage
-        project = json_params['project']['homepage']
+        try:
+            # get project homepage
+            project = json_params['project']['name']
+        except KeyError as err:
+            self.send_response(500, "KeyError")
+            logging.error("No project provided by the JSON payload")
+            self.end_headers()
+            return
 
         try:
             # get command and token from config file
             command = config[project]['command']
             gitlab_token = config[project]['gitlab_token']
+            foreground = 'background' in config[project] and not config[project]['background']
 
             logging.info("Load project '%s' and run command '%s'", project, command)
         except KeyError as err:
@@ -65,7 +76,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             logging.info("Start executing '%s'" % command)
             try:
                 # run command in background
-                subprocess.Popen(command)
+                p = Popen(command, stdin=PIPE)
+                p.stdin.write(json_payload);
+                if foreground:
+                    p.communicate()
                 self.send_response(200, "OK")
             except OSError as err:
                 self.send_response(500, "OSError")
@@ -92,10 +106,12 @@ def get_parser():
                         default=8666,
                         metavar="PORT",
                         help="port where it listens")
-    parser.add_argument("--cfg",
-                        dest="cfg",
-                        default="config.yaml",
-                        help="path to the config file")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--cfg",
+                       dest="cfg",
+                       default="config.yaml",
+                       type=FileType('r'),
+                       help="path to the config file")
     return parser
 
 
@@ -107,18 +123,9 @@ def main(addr, port):
 
 if __name__ == '__main__':
     parser = get_parser()
-
-    if len(sys.argv) == 0:
-        parser.print_help()
-        sys.exit(1)
     args = parser.parse_args()
 
-    # load config file
-    try:
-        with open(args.cfg, 'r') as stream:
-            config = yaml.load(stream)
-    except IOError as err:
-        logging.error("Config file %s could not be loaded", args.cfg)
-        sys.exit(1)
+    if args.cfg:
+        config = yaml.load(args.cfg)
 
     main(args.addr, args.port)

@@ -7,3 +7,8 @@ https://git.example.ch/exmaple/myrepo:
 https://git.example.ch/exmaple/test-repo:
   command: uname
   gitlab_token: mysecret-test-repo
+# quick command (no background, show output) and use payload as stdin
+https://git.example.ch/example/test-repo:
+  command: [ sh, -c, "jq . | sed 's/^/prefix /'" ]
+  background: no
+  gitlab_token:
